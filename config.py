@@ -22,7 +22,7 @@ CONFIG = {
     # Thông số xử lý cho từng model đơn
     "single_model_defaults": {
         "conf_threshold": 0.05,
-        "iou_same_class_threshold": 0.05,
+        "iou_same_class_threshold": 0.4,
         "iou_diff_class_threshold": 0.95,
     },
 

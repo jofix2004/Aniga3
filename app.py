@@ -67,8 +67,8 @@ def _apply_mask_overlay(raw_image_pil, clean_image_pil, mask_np):
     if len(mask_float.shape) == 2:
         mask_float = mask_float[:, :, np.newaxis]
 
-    # Blend: vùng mask trắng = raw, vùng đen = clean
-    overlay = (raw_np * mask_float + clean_np * (1 - mask_float)).astype(np.uint8)
+    # Blend: vùng mask trắng = clean (đã xóa text), vùng đen = raw (giữ nguyên)
+    overlay = (clean_np * mask_float + raw_np * (1 - mask_float)).astype(np.uint8)
     return Image.fromarray(overlay)
 
 

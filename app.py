@@ -131,21 +131,7 @@ def run_pipeline_wrapper(raw_image, clean_image, device_mode, ocr_mode, selected
     return full_output, bbox_annotated, mask_image, mask_overlay
 
 
-def on_mask_selection_change(current_selection):
-    """Xử lý logic Full Box (b1-b5)."""
-    b_set = {"b1", "b2", "b3", "b4", "b5"}
-    special_key = "Full Box (b1-b5)"
-    current_set = set(current_selection)
 
-    if special_key in current_set:
-        for b in b_set:
-            if b not in current_set:
-                current_set.add(b)
-    else:
-        if b_set.issubset(current_set):
-            current_set.add(special_key)
-
-    return gr.update(value=list(current_set))
 
 
 # ============================================================================
@@ -192,7 +178,7 @@ def create_ui():
                 # Cột 2: Class selector
                 with gr.Column(scale=1):
                     mask_classes_selector = gr.CheckboxGroup(
-                        choices=["text", "text2", "b1", "b2", "b3", "b4", "b5", "Full Box (b1-b5)"],
+                        choices=["text", "text2", "b1", "b2", "b3", "b4", "b5"],
                         value=DEFAULT_MASK_CLASSES,
                         label="Chọn class để tạo Mask YOLO",
                         info="Chọn class có bbox sẽ được dùng để tạo mask.",
@@ -234,11 +220,6 @@ def create_ui():
                 overlay_output = gr.Image(label="✨ Áp dụng Mask (Raw ↔ Clean)")
 
         # --- EVENT HANDLERS ---
-        mask_classes_selector.change(
-            fn=on_mask_selection_change,
-            inputs=[mask_classes_selector],
-            outputs=[mask_classes_selector],
-        )
 
         run_button.click(
             fn=run_pipeline_wrapper,

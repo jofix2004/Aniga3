@@ -1,0 +1,22 @@
+# --- Core ML & Computer Vision ---
+# Lưu ý: Cài đặt torch và torchvision riêng theo GPU
+# torch==2.8.0
+# torchvision==0.23.0
+ultralytics==8.3.198
+opencv-python==4.12.0.88
+numpy==2.0.2
+Pillow==11.3.0
+
+# --- User Interface ---
+gradio==5.44.1
+
+# --- Performance ---
+numba==0.60.0
+
+# --- OCR Libraries ---
+python-doctr==1.0.0
+manga-ocr==0.1.14
+
+# --- Image Processing ---
+scikit-image
+matplotlib==3.10.0

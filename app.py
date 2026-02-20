@@ -3,9 +3,73 @@
 import gradio as gr
 import numpy as np
 import json
-from PIL import Image
+import cv2
+from PIL import Image, ImageDraw, ImageFont
 
-from config import CONFIG, MASKABLE_CLASSES, DEFAULT_MASK_CLASSES
+from config import CONFIG, MASKABLE_CLASSES, DEFAULT_MASK_CLASSES, DEFAULT_CLASS_COLORS
+
+
+def _draw_bboxes_on_image(image_pil, bbox_json_list):
+    """Vẽ bounding box lên ảnh PIL với màu theo class."""
+    img = image_pil.copy()
+    draw = ImageDraw.Draw(img)
+
+    # Thử load font lớn hơn, fallback nếu không có
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+    except (IOError, OSError):
+        font = ImageFont.load_default()
+
+    for item in bbox_json_list:
+        x1, y1, x2, y2 = item["bbox"]
+        class_name = item["class"]
+        conf = item["confidence"]
+        ocr_text = item.get("ocr_text", "")
+
+        # Lấy màu từ config
+        hex_color = DEFAULT_CLASS_COLORS.get(class_name, "#ffffff")
+        r = int(hex_color[1:3], 16)
+        g = int(hex_color[3:5], 16)
+        b = int(hex_color[5:7], 16)
+        color = (r, g, b)
+
+        # Vẽ box
+        draw.rectangle([x1, y1, x2, y2], outline=color, width=2)
+
+        # Vẽ label
+        label = f"{class_name} {conf:.2f}"
+        if ocr_text:
+            label += f" | {ocr_text[:30]}"
+
+        # Background cho text
+        bbox_text = draw.textbbox((x1, y1 - 20), label, font=font)
+        draw.rectangle(bbox_text, fill=color)
+        draw.text((x1, y1 - 20), label, fill="white", font=font)
+
+    return img
+
+
+def _apply_mask_overlay(raw_image_pil, clean_image_pil, mask_np):
+    """Áp dụng mask: vùng trắng = ảnh gốc, vùng đen = ảnh clean."""
+    raw_np = np.array(raw_image_pil)
+    clean_np = np.array(clean_image_pil)
+
+    # Resize clean nếu khác kích thước
+    if clean_np.shape[:2] != raw_np.shape[:2]:
+        clean_np = cv2.resize(clean_np, (raw_np.shape[1], raw_np.shape[0]))
+
+    # Resize mask nếu khác kích thước
+    if mask_np.shape[:2] != raw_np.shape[:2]:
+        mask_np = cv2.resize(mask_np, (raw_np.shape[1], raw_np.shape[0]))
+
+    # Chuẩn hóa mask thành float [0, 1]
+    mask_float = mask_np.astype(np.float32) / 255.0
+    if len(mask_float.shape) == 2:
+        mask_float = mask_float[:, :, np.newaxis]
+
+    # Blend: vùng mask trắng = raw, vùng đen = clean
+    overlay = (raw_np * mask_float + clean_np * (1 - mask_float)).astype(np.uint8)
+    return Image.fromarray(overlay)
 
 
 def run_pipeline_wrapper(raw_image, clean_image, device_mode, ocr_mode, selected_classes,
@@ -13,15 +77,15 @@ def run_pipeline_wrapper(raw_image, clean_image, device_mode, ocr_mode, selected
     """Wrapper gọi pipeline chính và format output cho Gradio."""
     if raw_image is None:
         gr.Warning("Vui lòng tải lên ảnh gốc!")
-        return None, None
+        return None, None, None, None
 
     if clean_image is None:
         gr.Warning("Vui lòng tải lên ảnh clean (dùng cho tạo mask)!")
-        return None, None
+        return None, None, None, None
 
     if not selected_classes:
         gr.Warning("Vui lòng chọn ít nhất 1 class cho mask!")
-        return None, None
+        return None, None, None, None
 
     # Import core ở đây để tránh circular import và cho phép reload
     import importlib
@@ -52,15 +116,19 @@ def run_pipeline_wrapper(raw_image, clean_image, device_mode, ocr_mode, selected
 
     # Format JSON output
     bbox_json_str = json.dumps(result["bbox_json"], indent=2, ensure_ascii=False)
-
-    # Thêm logs vào JSON
     logs_text = "\n".join(result["logs"])
     full_output = f"// === LOG ===\n// {chr(10).join(result['logs'])}\n\n{bbox_json_str}"
 
-    # Mask output (grayscale numpy → hiển thị được)
+    # Mask output
     mask_image = result["final_mask"]
 
-    return full_output, mask_image
+    # Vẽ BBox lên ảnh gốc
+    bbox_annotated = _draw_bboxes_on_image(raw_image, result["bbox_json"])
+
+    # Áp dụng mask overlay
+    mask_overlay = _apply_mask_overlay(raw_image, clean_image, mask_image)
+
+    return full_output, bbox_annotated, mask_image, mask_overlay
 
 
 def on_mask_selection_change(current_selection):
@@ -70,12 +138,10 @@ def on_mask_selection_change(current_selection):
     current_set = set(current_selection)
 
     if special_key in current_set:
-        # Thêm tất cả b nếu chưa có
         for b in b_set:
             if b not in current_set:
                 current_set.add(b)
     else:
-        # Kiểm tra nếu tất cả b đã được chọn thủ công
         if b_set.issubset(current_set):
             current_set.add(special_key)
 
@@ -96,7 +162,7 @@ def create_ui():
     ) as demo:
 
         gr.Markdown("# 🎯 Aniga3 - Phát hiện & Tạo Mask")
-        gr.Markdown("Phiên bản gọn gàng: Upload 2 ảnh → Nhận JSON BBox + Mask cuối cùng")
+        gr.Markdown("Phiên bản gọn gàng: Upload 2 ảnh → Nhận BBox + Mask + Overlay")
 
         # --- INPUT ---
         with gr.Row():
@@ -120,7 +186,7 @@ def create_ui():
                         ["Không bật", "Tiếng Anh (Tinh chỉnh box)", "Tiếng Nhật (Chỉ trích xuất)"],
                         value="Không bật",
                         label="Chế độ OCR",
-                        info="Yêu cầu bật Ensemble. OCR data sẽ nằm trong JSON output.",
+                        info="OCR data sẽ nằm trong JSON output.",
                     )
 
                 # Cột 2: Class selector
@@ -147,6 +213,8 @@ def create_ui():
 
         # --- OUTPUT ---
         gr.Markdown("---\n### 📊 Kết quả")
+
+        # Hàng 1: JSON + BBox trực quan
         with gr.Row():
             with gr.Column():
                 bbox_output = gr.Textbox(
@@ -156,7 +224,14 @@ def create_ui():
                     show_copy_button=True,
                 )
             with gr.Column():
+                bbox_image_output = gr.Image(label="🔲 Ảnh vẽ BBox")
+
+        # Hàng 2: Mask + Overlay
+        with gr.Row():
+            with gr.Column():
                 mask_output = gr.Image(label="🎭 Mask cuối cùng")
+            with gr.Column():
+                overlay_output = gr.Image(label="✨ Áp dụng Mask (Raw ↔ Clean)")
 
         # --- EVENT HANDLERS ---
         mask_classes_selector.change(
@@ -173,7 +248,7 @@ def create_ui():
                 mask_blur, mask_min_area, mask_cleanup, mask_overlap,
                 mask_expand, mask_feather,
             ],
-            outputs=[bbox_output, mask_output],
+            outputs=[bbox_output, bbox_image_output, mask_output, overlay_output],
         )
 
     return demo

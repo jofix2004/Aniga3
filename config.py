@@ -5,9 +5,9 @@ import os
 
 # --- ĐƯỜNG DẪN MODEL CỐ ĐỊNH (Colab) ---
 MODEL_PATHS = [
-    "/content/Aniga2/model1.pt",  # YOLOv8 (Ultralytics)
-    "/content/Aniga2/model2.pt",  # YOLOv9 gốc (DetectMultiBackend)
-    "/content/Aniga2/model3.pt",  # YOLOv11 (Ultralytics)
+    "/content/Aniga3/model1.pt",  # YOLOv8 (Ultralytics)
+    "/content/Aniga3/model2.pt",  # YOLOv9 gốc (DetectMultiBackend)
+    "/content/Aniga3/model3.pt",  # YOLOv11 (Ultralytics)
 ]
 
 # Model 2 là YOLOv9 gốc (dùng DetectMultiBackend thay vì Ultralytics YOLO)
